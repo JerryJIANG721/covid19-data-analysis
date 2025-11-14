@@ -1,0 +1,158 @@
+import pandas as pd 
+import numpy as np 
+import matplotlib.pyplot as plt
+import plotly.express as px
+import os
+
+BASE_DIR = os.path.dirname(__file__)
+
+DATA_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "data", "owid-covid-data.csv"))
+
+DATA_CLEAN_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "data_clean"))
+
+FIGURES_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "figures"))
+
+os.makedirs(DATA_CLEAN_DIR, exist_ok=True)
+os.makedirs(FIGURES_DIR, exist_ok=True)
+
+DATA_CLEAN_PATH = os.path.join(DATA_CLEAN_DIR, "owid-covid-data-clean.csv")
+
+data = pd.read_csv(DATA_PATH)
+
+
+data["date"] = pd.to_datetime(data["date"])
+data.set_index("date", inplace=True)
+
+data.fillna(data.select_dtypes(include='number').mean(), inplace=True)
+
+country_map = {
+        'USA': 'United States',
+        'U.S.A.': 'United States',
+        'US': 'United States',
+        'Mainland China': 'China',
+        "People's Republic of China": 'China',
+        'UK': 'United Kingdom',
+        'U.K.': 'United Kingdom',
+        'England': 'United Kingdom',
+        'South Korea': 'Korea, Republic of',
+        'Republic of Korea': 'Korea, Republic of',
+        'Russia': 'Russian Federation',
+        'Iran (Islamic Republic of)': 'Iran',
+        'Viet Nam': 'Vietnam'
+    }
+
+data["location"] = data["location"].replace(country_map) #standarize country names
+
+data.to_csv(DATA_CLEAN_PATH) #save the clean data file
+
+data_clean = pd.read_csv(DATA_CLEAN_PATH)
+
+data_somme_deaths = data_clean.groupby("location")[['total_deaths']].max().reset_index()
+data_somme_cases = data_clean.groupby("location")[['total_cases']].max().reset_index()
+
+data_somme = pd.merge(data_somme_deaths, data_somme_cases, on='location', how='outer') #group by each country the total deaths and the total cases
+
+data_new_deaths_cases_perday = data_clean.groupby("date")[['new_deaths','new_cases']].sum() #group by date for new cases and new deaths
+
+data_new_deaths_cases_perday[["total_deaths_rate", "total_cases_rate"]] = data_clean.groupby("date")[['total_deaths_per_million','total_cases_per_million']].mean()/10000 #group by date for cases and deaths rate
+data_new_deaths_cases_perday[["total_vaccinations_rate"]] = data_clean.groupby("date")[['total_vaccinations_per_hundred']].mean()/100 #group by date for cases and deaths rate
+
+data_new_deaths_cases_perday = data_new_deaths_cases_perday.reset_index()
+highest_new_cases = data_new_deaths_cases_perday['new_cases'].idxmax() #find the highest infection day
+
+data_somme_deaths_and_cases_continents = data_clean.groupby("continent")[['total_deaths', 'total_cases']].max().reset_index()
+
+data_new_deaths_cases_perday["date"] = pd.to_datetime(data_new_deaths_cases_perday["date"])
+date = list(data_new_deaths_cases_perday['date'])
+
+cases = list(data_new_deaths_cases_perday['new_cases'])
+d_max = data_new_deaths_cases_perday.loc[highest_new_cases]['date']
+i_max = int(data_new_deaths_cases_perday['new_cases'].max())
+
+vaccination = list(data_new_deaths_cases_perday["total_vaccinations_rate"])
+deaths = list(data_new_deaths_cases_perday["total_deaths_rate"])
+
+countries = ['China', 'United States', 'United Kingdom', 'Iran', 'Africa']
+somme_deaths = data_somme_deaths[data_somme_deaths['location'].isin(countries)]
+somme_cases = data_somme_cases[data_somme_cases['location'].isin(countries)]
+somme_deaths = somme_deaths.set_index('location').reindex(countries).reset_index()
+somme_cases = somme_cases.set_index('location').reindex(countries).reset_index()
+x = np.arange(len(countries))
+width = 0.4
+
+continents = list(data_somme_deaths_and_cases_continents['continent'])
+somme_deaths_continents = data_somme_deaths_and_cases_continents[data_somme_deaths_and_cases_continents['continent'].isin(continents)]['total_deaths']
+somme_cases_continents = data_somme_deaths_and_cases_continents[data_somme_deaths_and_cases_continents['continent'].isin(continents)]['total_cases']
+xx = np.arange(len(continents))
+
+
+fig, axs = plt.subplots(2,2, figsize=(15,15))
+
+axs[0,0].plot(date, cases)
+axs[0,0].scatter(d_max-pd.Timedelta(days=3), i_max, color='red', label='the highest new cases day')
+axs[0,0].legend()
+axs[0,0].text(d_max+pd.Timedelta(days=60), i_max, str(i_max)+' cases')
+axs[0,0].set_xlabel('date')
+axs[0,0].set_ylabel('new cases')
+axs[0,0].set_title('Tendance of global new cases')
+
+
+axs[0,1].plot(date, vaccination, color='green', label='Vaccination Rate (%)')
+axs[0,1].set_xlabel('Date')
+axs[0,1].set_ylabel('Rate(%)')
+axs[0,1].plot(date, deaths, color='red', label='Death Rate (%)')
+axs[0,1].legend()
+axs[0,1].set_title('Vaccination vs Death Rate Over Time')
+
+
+axs[1,0].bar(x - width/2, somme_deaths['total_deaths'], width, label='Total Deaths', color='black')
+axs[1,0].bar(x + width/2, somme_cases['total_cases'], width, label='Total Cases', color='blue')
+axs[1,0].set_xticks(x)
+axs[1,0].set_yscale('log')
+axs[1,0].set_xticklabels(countries, rotation=45, ha='right')
+axs[1,0].set_ylabel('Number of People')
+axs[1,0].set_title('Total COVID-19 Cases and Deaths by Country')
+axs[1,0].legend()
+
+axs[1,1].bar(xx - width/2, somme_deaths_continents, width, label='Total Deaths', color='yellow')
+axs[1,1].bar(xx + width/2, somme_cases_continents, width, label='Total Cases', color='green')
+axs[1,1].set_xticks(xx)
+axs[1,1].set_yscale('log')
+axs[1,1].set_xticklabels(continents, rotation=45, ha='right')
+axs[1,1].set_ylabel('Number of people')
+axs[1,1].set_title('Total COVID-19 Cases and Deaths by Continents')
+axs[1,1].legend()
+plt.savefig(os.path.join(FIGURES_DIR, "Plot_from_mathplotlib.jpg"), dpi=300)
+plt.show()
+
+df = pd.read_csv(DATA_CLEAN_PATH)
+df["date"] = pd.to_datetime(df["date"], errors="coerce")
+df = df.dropna(subset=["date"]).sort_values(["location", "date"])
+
+df["new_cases_7d"] = df.groupby("location")["new_cases"].transform(
+    lambda s: s.rolling(7, min_periods=1).mean()
+)
+
+metric_col = "new_cases_7d"
+if "population" in df.columns:
+    df["cases_7d_per_100k"] = df["new_cases_7d"] / (df["population"] / 100_000)
+    metric_col = "cases_7d_per_100k"
+
+use_iso = "iso_code" in df.columns
+loc_col = "iso_code" if use_iso else "location"
+
+fig = px.choropleth(
+    df,
+    locations=loc_col,
+    color=metric_col,
+    hover_name="location",
+    animation_frame=df["date"].dt.strftime("%Y-%m-%d"),
+    color_continuous_scale="Reds",
+    title="7-day Avg New Cases per 100k (Time Slider)",
+)
+
+if not use_iso:
+    fig.update_traces(locationmode="country names")
+
+output_path = os.path.join(FIGURES_DIR, "map_cases_per_100k.html")
+fig.write_html(output_path)
