@@ -16,6 +16,8 @@ The analysis focuses on infection and recovery trends across different countries
 - Python 3  
 - Pandas  
 - Matplotlib  
+- plotly
 
 ## Note
 This is a small independent project I built to strengthen my **data analysis skills** and prepare for further study in data science.
+And for applying my master of Data science
