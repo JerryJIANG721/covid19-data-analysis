@@ -4,3 +4,7 @@ numpy
 jupyter
 plotly
 os
+sklearn
+prophet
+xgboost
+lightgbm
